@@ -6,6 +6,33 @@ import plotly.express as px
 import streamlit as st
 from supabase import Client, create_client
 
+# CSS para melhor responsividade
+st.markdown("""
+<style>
+    /* Improve container width on mobile */
+    .main { max-width: 100%; }
+    
+    /* Responsive padding */
+    .main > div { padding: 0 1rem; }
+    
+    /* Better spacing for small screens */
+    @media (max-width: 640px) {
+        .main > div { padding: 0 0.5rem; }
+        h1 { font-size: 1.5rem !important; }
+        h2 { font-size: 1.2rem !important; }
+    }
+    
+    /* Fix column layout on mobile */
+    [data-testid="column"] { flex-wrap: wrap; }
+    
+    /* Better table responsiveness */
+    .stDataFrame { overflow-x: auto; }
+    
+    /* Improve form responsiveness */
+    .stForm { width: 100%; }
+</style>
+""", unsafe_allow_html=True)
+
 # Tenta importar a biblioteca de feriados (se não tiver, ele pula apenas os finais de semana)
 try:
     import holidays
@@ -121,17 +148,27 @@ def pagina_dashboard(supabase: Client) -> None:
     qtd_clientes_com_movimento = int(df_cobrancas["cliente_id"].nunique()) if "cliente_id" in df_cobrancas.columns else 0
 
     st.subheader("Visão Geral")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total a Receber (R$)", f"{total_a_receber:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    col2.metric("Total Emitido (R$)", f"{total_emitido:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    col3.metric("Total Recebido (R$)", f"{total_recebido:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    col4.metric("% Recebido", f"{perc_recebido:.1f}%")
+    
+    # Responsive columns - 2 colunas em telas pequenas, 4 em telas grandes
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 1], gap="small")
+    with col1:
+        st.metric("Total a Receber (R$)", f"{total_a_receber:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    with col2:
+        st.metric("Total Emitido (R$)", f"{total_emitido:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    with col3:
+        st.metric("Total Recebido (R$)", f"{total_recebido:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    with col4:
+        st.metric("% Recebido", f"{perc_recebido:.1f}%")
 
-    col5, col6, col7, col8 = st.columns(4)
-    col5.metric("Boletos Pendentes", f"{qtd_pendentes}")
-    col6.metric("Boletos Pagos", f"{qtd_pagos}")
-    col7.metric("Clientes com Movimento", f"{qtd_clientes_com_movimento}")
-    col8.metric("Total de Clientes", f"{qtd_clientes_total}")
+    col5, col6, col7, col8 = st.columns([1, 1, 1, 1], gap="small")
+    with col5:
+        st.metric("Boletos Pendentes", f"{qtd_pendentes}")
+    with col6:
+        st.metric("Boletos Pagos", f"{qtd_pagos}")
+    with col7:
+        st.metric("Clientes com Movimento", f"{qtd_clientes_com_movimento}")
+    with col8:
+        st.metric("Total de Clientes", f"{qtd_clientes_total}")
 
     if not df_saldo.empty:
         st.markdown("#### Top Devedores (Pendentes)")
@@ -145,7 +182,11 @@ def pagina_dashboard(supabase: Client) -> None:
             df_view["Cliente"] = df_view["Cliente"].fillna(df_view["cliente_id"].astype(str))
 
         cols_to_show = [c for c in ["Cliente", "saldo_pendente"] if c in df_view.columns]
-        st.dataframe(df_view[cols_to_show].rename(columns={"saldo_pendente": "Saldo Pendente (R$)"}))
+        st.dataframe(
+            df_view[cols_to_show].rename(columns={"saldo_pendente": "Saldo Pendente (R$)"}),
+            use_container_width=True,
+            hide_index=True
+        )
 
     st.markdown("#### Próximos Vencimentos (Pendentes)")
     df_pend_venc = df_cobrancas.copy()
@@ -161,7 +202,7 @@ def pagina_dashboard(supabase: Client) -> None:
         
         if venc_col in df_pend_venc.columns:
             df_pend_venc[venc_col] = pd.to_datetime(df_pend_venc[venc_col], utc=True, errors="coerce")
-            df_pend_venc = df_pend_venc.sort_values(venc_col).head(10)
+            df_pend_venc = df_pend_venc.sort_values(venc_col).head(15)
 
             hoje = pd.Timestamp.now(tz="UTC").normalize()
             df_pend_venc["dias_em_atraso"] = ((hoje - df_pend_venc[venc_col]).dt.days).clip(lower=0)
@@ -183,7 +224,8 @@ def pagina_dashboard(supabase: Client) -> None:
                 column_config={
                     "Arquivo": st.column_config.LinkColumn("Boleto", display_text="Abrir PDF/Img")
                 },
-                hide_index=True
+                hide_index=True,
+                use_container_width=True
             )
     else:
         st.info("Nenhum boleto pendente para próximos vencimentos.")
@@ -206,21 +248,36 @@ def pagina_dashboard(supabase: Client) -> None:
 
     fig = px.bar(
         df_por_mes, x="mes", y="valor",
-        labels={"mes": "Mês", "valor": "Receita (R$)"}, title="Receitas por mês"
+        labels={"mes": "Mês", "valor": "Receita (R$)"}, 
+        title="Receitas por mês"
     )
+    fig.update_layout(hovermode="x unified", margin=dict(l=0, r=0, t=40, b=0))
     st.plotly_chart(fig, use_container_width=True)
 
 
 def pagina_cadastrar_cliente(supabase: Client) -> None:
     st.title("Cadastro de Clientes")
+    
+    # Remover padding desnecessário em telas pequenas
+    st.markdown("""
+    <style>
+        .reportview-container { max-width: 100%; }
+    </style>
+    """, unsafe_allow_html=True)
 
     with st.form("form_cadastro_cliente", clear_on_submit=True):
         nome = st.text_input("Nome do Cliente", max_chars=150)
-        documento = st.text_input("Documento (CPF/CNPJ)", max_chars=20)
-        email = st.text_input("E-mail", max_chars=150)
+        
+        col1, col2 = st.columns(2, gap="medium")
+        with col1:
+            documento = st.text_input("Documento (CPF/CNPJ)", max_chars=20)
+        with col2:
+            email = st.text_input("E-mail", max_chars=150)
+        
         telefone = st.text_input("Telefone", max_chars=50)
-
-        if st.form_submit_button("Salvar Cliente"):
+        
+        st.markdown("---")
+        if st.form_submit_button("Salvar Cliente", use_container_width=True):
             if not nome:
                 st.warning("O campo Nome é obrigatório.")
                 return
@@ -232,12 +289,14 @@ def pagina_cadastrar_cliente(supabase: Client) -> None:
             }
             try:
                 supabase.table("clientes").insert(data).execute()
-                st.success("Cliente cadastrado com sucesso!")
+                st.success("✅ Cliente cadastrado com sucesso!")
+                st.balloons()
             except Exception as e:
-                st.error(f"Erro ao cadastrar cliente: {e}")
+                st.error(f"❌ Erro ao cadastrar cliente: {e}")
 
 
 def pagina_lancar_cobranca(supabase: Client) -> None:
+    st.set_page_config(layout="wide")
     st.title("Lançar Boletos")
 
     df_clientes = carregar_clientes(supabase)
@@ -260,27 +319,25 @@ def pagina_lancar_cobranca(supabase: Client) -> None:
     pular_fds = True
 
     if tipo_lancamento == "Parcelado":
-        col_qtd, col_check = st.columns([1, 2])
+        col_qtd, col_check = st.columns([1, 2], gap="medium")
         with col_qtd:
             qtd_parcelas = st.number_input("Quantidade de Parcelas", min_value=2, max_value=120, step=1, value=2)
         with col_check:
-            st.write(""); st.write("")
+            st.write("")
             preenchimento_auto = st.checkbox("Valores iguais para todas as parcelas (Automático)", value=True)
             
         # MOVIDO PARA FORA DO FORMULÁRIO: Agora a tela atualiza na hora!
         if preenchimento_auto:
             st.markdown("##### Regras de Vencimento")
-            col_i1, col_i2, col_i3 = st.columns([2, 2, 3])
+            col_i1, col_i2 = st.columns([1.5, 1.5], gap="medium")
             
             with col_i1:
                 tipo_intervalo = st.selectbox("Intervalo entre parcelas", ["Mensal (Mesmo dia)", "Personalizado (Dias Corridos)"])
-            
-            with col_i2:
                 if tipo_intervalo == "Personalizado (Dias Corridos)":
                     dias_intervalo = st.number_input("A cada quantos dias?", min_value=1, value=15, step=1)
             
-            with col_i3:
-                st.write(""); st.write("")
+            with col_i2:
+                st.write("")
                 pular_fds = st.checkbox("Avançar sábados, domingos e feriados", value=True)
                 if pular_fds and not TEM_HOLIDAYS:
                     st.caption("⚠️ Feriados não suportados. Rode `pip install holidays` no terminal para ativar.")
@@ -293,27 +350,26 @@ def pagina_lancar_cobranca(supabase: Client) -> None:
         
         st.markdown("**Arquivo Global (Opcional)**")
         st.caption("Anexe aqui se você tiver um ÚNICO arquivo para vincular a todas as parcelas deste lançamento.")
-        arquivo_global = st.file_uploader("Arquivo Único", type=["pdf", "png", "jpg", "jpeg"])
-        st.write("")
+        arquivo_global = st.file_uploader("Arquivo Único", type=["pdf", "png", "jpg", "jpeg"], label_visibility="collapsed")
         
         parcelas_info = []
         valor_base = 0.0
         data_base = pd.Timestamp.today().date()
 
         if tipo_lancamento == "Único":
-            col1, col2 = st.columns(2)
+            col1, col2 = st.columns(2, gap="medium")
             with col1:
                 valor_base = st.number_input("Valor (R$)", min_value=0.0, step=0.01, format="%.2f")
             with col2:
-                data_base = st.date_input("Data de Vencimento")
+                data_base = st.date_input("Data de Vencimento", label_visibility="visible")
 
         elif tipo_lancamento == "Parcelado" and preenchimento_auto:
             st.info(f"O sistema irá gerar **{qtd_parcelas} parcelas** automaticamente com as regras selecionadas acima.")
-            col1, col2 = st.columns(2)
+            col1, col2 = st.columns(2, gap="medium")
             with col1:
                 valor_base = st.number_input("Valor de CADA parcela (R$)", min_value=0.0, step=0.01, format="%.2f")
             with col2:
-                data_base = st.date_input("Data do 1º Vencimento")
+                data_base = st.date_input("Data do 1º Vencimento", label_visibility="visible")
 
         elif tipo_lancamento == "Parcelado" and not preenchimento_auto:
             st.caption("Ajuste os valores, datas ou anexe boletos individuais de cada parcela abaixo:")
@@ -321,7 +377,7 @@ def pagina_lancar_cobranca(supabase: Client) -> None:
                 for i in range(qtd_parcelas):
                     st.markdown(f"**Parcela {i+1}**")
                     venc_sugerido = (pd.Timestamp.today() + pd.DateOffset(months=i)).date()
-                    col1, col2 = st.columns(2)
+                    col1, col2 = st.columns(2, gap="medium")
                     with col1:
                         v = st.number_input(f"Valor (R$)", min_value=0.0, step=0.01, format="%.2f", key=f"val_{i}")
                     with col2:
@@ -331,7 +387,8 @@ def pagina_lancar_cobranca(supabase: Client) -> None:
                     parcelas_info.append({"valor": v, "vencimento": d, "arquivo": arq_indiv})
                     st.divider()
 
-        if st.form_submit_button("Lançar Boleto(s)"):
+        st.markdown("---")
+        if st.form_submit_button("Lançar Boleto(s)", use_container_width=True):
             cliente_row = df_clientes[df_clientes["nome"] == cliente_nome].iloc[0]
             cliente_id = int(cliente_row["id"])
             payload_list = []
@@ -456,7 +513,7 @@ def pagina_editar_cobranca(supabase: Client) -> None:
         
         novo_cliente_nome = st.selectbox("Cliente", nomes_clientes, index=idx_cliente)
         
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2, gap="medium")
         with col1:
             novo_valor = st.number_input("Valor (R$)", value=float(dados_atuais["valor"]), step=0.01)
             try:
@@ -473,14 +530,15 @@ def pagina_editar_cobranca(supabase: Client) -> None:
             
             desc_atual = dados_atuais.get("descricao", "")
             if pd.isna(desc_atual) or desc_atual is None: desc_atual = ""
-            nova_desc = st.text_area("Descrição", value=str(desc_atual))
+            nova_desc = st.text_area("Descrição", value=str(desc_atual), height=107)
 
         st.markdown("**Atualizar Anexo**")
         if pd.notna(dados_atuais.get("arquivo_url")):
             st.info(f"[🔗 Ver Arquivo Atual do Boleto]({dados_atuais['arquivo_url']})")
         arquivo = st.file_uploader("Substituir Boleto (Deixe em branco para manter o atual)", type=["pdf", "png", "jpg", "jpeg"])
 
-        if st.form_submit_button("Salvar Alterações"):
+        st.markdown("---")
+        if st.form_submit_button("Salvar Alterações", use_container_width=True):
             novo_cliente_id = int(df_clientes[df_clientes["nome"] == novo_cliente_nome]["id"].iloc[0])
             
             payload = {
@@ -548,7 +606,8 @@ def pagina_baixar_boletos(supabase: Client) -> None:
         column_config={
             "Anexo": st.column_config.LinkColumn("Boleto", display_text="Abrir PDF/Img")
         },
-        hide_index=True
+        hide_index=True,
+        use_container_width=True
     )
 
     df_abertos["label"] = df_abertos.apply(
@@ -558,9 +617,10 @@ def pagina_baixar_boletos(supabase: Client) -> None:
     st.markdown("---")
     with st.form("form_baixar_boleto"):
         escolha_label = st.selectbox("Selecione o boleto para atualizar", options=df_abertos["label"].tolist())
-        acao = st.radio("Marcar como:", ("Pago", "Baixado / Cancelado"), horizontal=True)
-
-        if st.form_submit_button("Confirmar Baixa"):
+        acao = st.radio("Marcar como:", ("Pago", "Baixado / Cancelado"), horizontal=False)
+        
+        st.markdown("---")
+        if st.form_submit_button("Confirmar Baixa", use_container_width=True):
             cobranca_id = int(df_abertos[df_abertos["label"] == escolha_label].iloc[0]["id"])
             novo_status = "pago" if acao == "Pago" else "baixado"
             
@@ -580,7 +640,7 @@ def pagina_baixar_boletos(supabase: Client) -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="ERP Devedores", page_icon="💰", layout="wide")
+    st.set_page_config(page_title="ERP Devedores", page_icon="💰", layout="wide", initial_sidebar_state="expanded")
 
     st.sidebar.title("Menu")
     opcao = st.sidebar.radio(
